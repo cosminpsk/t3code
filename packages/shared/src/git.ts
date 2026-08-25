@@ -10,14 +10,16 @@ import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
 import { detectSourceControlProviderFromRemoteUrl } from "./sourceControl.ts";
 
+/** Prefix used for worktree branches when nothing overrides it. */
 export const WORKTREE_BRANCH_PREFIX = "t3code";
-// Canonical form is `t3code/<8 hex>`. Older mobile builds generated `t3code/<uuid>`
-// via Crypto.randomUUID() (always RFC 4122 v4), so the matcher also accepts exactly
-// that shape — version nibble `4`, variant nibble `[89ab]` — to keep those threads
-// eligible for branch regeneration without loosening beyond what was ever generated.
-const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(
-  `^${WORKTREE_BRANCH_PREFIX}\\/(?:[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$`,
-);
+const WORKTREE_BRANCH_PREFIX_MAX_LENGTH = 64;
+// Canonical form is `<prefix>/<8 hex>`. Older mobile builds generated
+// `t3code/<uuid>` via Crypto.randomUUID() (always RFC 4122 v4), so the matcher
+// also accepts exactly that shape — version nibble `4`, variant nibble `[89ab]`
+// — to keep those threads eligible for branch regeneration without loosening
+// beyond what was ever generated.
+const TEMP_WORKTREE_TOKEN_PATTERN =
+  "(?:[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})";
 
 /**
  * Sanitize an arbitrary string into a valid, lowercase git refName fragment.
@@ -92,8 +94,48 @@ export function deriveLocalBranchNameFromRemoteRef(branchName: string): string {
   return branchName.slice(firstSeparatorIndex + 1);
 }
 
+/**
+ * Normalize a configured worktree branch prefix into a git-safe ref fragment.
+ * Returns null when the value is absent or sanitizes away to nothing, so
+ * callers can fall through to the next level of the override chain.
+ */
+export function sanitizeWorktreeBranchPrefix(raw: string | null | undefined): string | null {
+  if (raw === null || raw === undefined) {
+    return null;
+  }
+  const sanitized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/['"`]/g, "")
+    .replace(/[^a-z0-9/_-]+/g, "-")
+    .replace(/\/+/g, "/")
+    .replace(/-+/g, "-")
+    .replace(/^[./_-]+|[./_-]+$/g, "")
+    .replace(/^\/+|\/+$/g, "")
+    .slice(0, WORKTREE_BRANCH_PREFIX_MAX_LENGTH)
+    .replace(/[./_/-]+$/g, "");
+
+  return sanitized.length > 0 ? sanitized : null;
+}
+
+/**
+ * Resolve the prefix new worktree branches use: the per-project override wins,
+ * then the environment-wide setting, then the built-in default.
+ */
+export function resolveWorktreeBranchPrefix(input: {
+  readonly projectPrefix: string | null | undefined;
+  readonly settingsPrefix: string | null | undefined;
+}): string {
+  return (
+    sanitizeWorktreeBranchPrefix(input.projectPrefix) ??
+    sanitizeWorktreeBranchPrefix(input.settingsPrefix) ??
+    WORKTREE_BRANCH_PREFIX
+  );
+}
+
 export function buildTemporaryWorktreeBranchName(
   randomHex: (byteLength: number) => string,
+  prefix?: string | null,
 ): string {
   // Normalize to exactly 8 lowercase hex chars so a UUID-shaped callback
   // still produces the canonical temporary branch form.
@@ -101,11 +143,28 @@ export function buildTemporaryWorktreeBranchName(
     .toLowerCase()
     .replace(/[^0-9a-f]/g, "")
     .slice(0, 8);
-  return `${WORKTREE_BRANCH_PREFIX}/${token}`;
+  return `${sanitizeWorktreeBranchPrefix(prefix) ?? WORKTREE_BRANCH_PREFIX}/${token}`;
 }
 
-export function isTemporaryWorktreeBranch(refName: string): boolean {
-  return TEMP_WORKTREE_BRANCH_PATTERN.test(refName.trim().toLowerCase());
+/**
+ * True for the placeholder branch a new worktree starts on, before the
+ * first-turn rename replaces it with a generated name. Threads created under a
+ * different prefix predate the current setting, so the built-in default always
+ * counts alongside the caller's prefix.
+ */
+export function isTemporaryWorktreeBranch(refName: string, prefix?: string | null): boolean {
+  const normalized = refName.trim().toLowerCase();
+  const customPrefix = sanitizeWorktreeBranchPrefix(prefix);
+  const prefixes =
+    customPrefix === null || customPrefix === WORKTREE_BRANCH_PREFIX
+      ? [WORKTREE_BRANCH_PREFIX]
+      : [customPrefix, WORKTREE_BRANCH_PREFIX];
+
+  // Sanitization limits prefixes to `[a-z0-9/_-]`, none of which are
+  // regex-special outside a character class, so interpolation is safe here.
+  return prefixes.some((candidate) =>
+    new RegExp(`^${candidate}\\/${TEMP_WORKTREE_TOKEN_PATTERN}$`).test(normalized),
+  );
 }
 
 /**

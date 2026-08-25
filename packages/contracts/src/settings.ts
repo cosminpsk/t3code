@@ -584,6 +584,12 @@ export const BackgroundActivityProfile = Schema.Literals([
 ]);
 export type BackgroundActivityProfile = typeof BackgroundActivityProfile.Type;
 export const DEFAULT_BACKGROUND_ACTIVITY_PROFILE: BackgroundActivityProfile = "balanced";
+/**
+ * Prefix for branches created with a new worktree. Mirrors
+ * `WORKTREE_BRANCH_PREFIX` in `@t3tools/shared/git`, duplicated here because
+ * contracts sits below shared in the dependency graph.
+ */
+export const DEFAULT_WORKTREE_BRANCH_PREFIX = "t3code";
 
 export const BackgroundActivityProfileSelection = Schema.Literals([
   "balanced",
@@ -657,6 +663,9 @@ export const ServerSettings = Schema.Struct({
   ),
   newWorktreesStartFromOrigin: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
+  worktreeBranchPrefix: TrimmedString.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_WORKTREE_BRANCH_PREFIX)),
   ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   textGenerationModelSelection: ModelSelection.pipe(
@@ -863,6 +872,7 @@ export const ServerSettingsPatch = Schema.Struct({
   backgroundActivityProfile: Schema.optionalKey(BackgroundActivityProfile),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
+  worktreeBranchPrefix: Schema.optionalKey(TrimmedString),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   sourceControlWritingStyle: Schema.optionalKey(

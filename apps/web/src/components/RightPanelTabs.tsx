@@ -33,7 +33,6 @@ import { Kbd } from "~/components/ui/kbd";
 import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "~/components/ui/menu";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
-import { faviconUrlForOrigin } from "~/lib/favicon";
 import { useTheme } from "~/hooks/useTheme";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
@@ -521,11 +520,14 @@ function surfaceTitle(
   }
 }
 
-function PreviewFavicon({ capturedUrl, url }: { capturedUrl: string | null; url: string | null }) {
-  const publicProviderUrl = faviconUrlForOrigin(url, 32);
+/**
+ * Tab icon for a preview surface. Only the favicon the in-app browser already
+ * captured is used; no third-party favicon service is consulted.
+ */
+function PreviewFavicon({ capturedUrl }: { capturedUrl: string | null }) {
   return (
     <FaviconImage
-      sources={[capturedUrl, publicProviderUrl]}
+      sources={[capturedUrl]}
       fallback={<Globe2 className="size-3 shrink-0" />}
       className="size-3 shrink-0 rounded-sm object-contain"
     />
@@ -560,7 +562,7 @@ function SurfaceIcon({
       const favicon = snapshot ? (desktopByTabId[snapshot.tabId]?.favicon ?? null) : null;
       const capturedUrl =
         favicon && url && sameOrigin(favicon.pageUrl, url) ? favicon.dataUrl : null;
-      return <PreviewFavicon capturedUrl={capturedUrl} url={url} />;
+      return <PreviewFavicon capturedUrl={capturedUrl} />;
     }
     case "diff":
       return <FileDiff className="size-3 shrink-0" />;

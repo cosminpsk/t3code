@@ -103,6 +103,8 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
+import { DraftInput } from "../ui/draft-input";
+import { resolveWorktreeBranchPrefix, sanitizeWorktreeBranchPrefix } from "@t3tools/shared/git";
 import {
   SettingResetButton,
   SettingsPageContainer,
@@ -364,6 +366,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
         title: string;
         defaultModelSelection: ModelSelection | null;
         defaultThreadEnvMode: ThreadEnvMode | null;
+        worktreeBranchPrefix: string | null;
         faviconPath: string | null;
       }>,
       failureTitle: string,
@@ -448,6 +451,17 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     [updateAllMembers],
   );
 
+  // ----- worktree branch prefix -----
+  const storedWorktreeBranchPrefix = representative.worktreeBranchPrefix ?? null;
+  const setWorktreeBranchPrefix = useCallback(
+    (prefix: string | null) =>
+      void updateAllMembers(
+        { worktreeBranchPrefix: prefix },
+        "Failed to update worktree branch prefix",
+      ),
+    [updateAllMembers],
+  );
+
   // ----- favicon -----
   const [faviconPickerOpen, setFaviconPickerOpen] = useState(false);
   const [isSavingFavicon, setIsSavingFavicon] = useState(false);
@@ -489,6 +503,11 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   // What the "Default" option resolves to while no override is set: the
   // repo's t3.json value when present, otherwise the global setting.
   const inheritedEnvMode = t3File.file?.defaultThreadEnvMode ?? settings.defaultThreadEnvMode;
+  // What an unset project prefix resolves to: the environment-wide setting.
+  const inheritedWorktreeBranchPrefix = resolveWorktreeBranchPrefix({
+    projectPrefix: null,
+    settingsPrefix: settings.worktreeBranchPrefix,
+  });
   const inheritedEnvModeSource = t3File.file?.defaultThreadEnvMode != null ? "t3.json" : "global";
   const importableScripts = useMemo(
     () =>
@@ -920,6 +939,28 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   <SelectItem value="local">{resolveEnvModeLabel("local")}</SelectItem>
                 </SelectPopup>
               </Select>
+            }
+          />
+          <SettingsRow
+            title="Worktree branch prefix"
+            description="Namespace for branches created with a new worktree in this project. Overrides the global setting; applies to every checkout in this group."
+            resetAction={
+              storedWorktreeBranchPrefix !== null ? (
+                <SettingResetButton
+                  label="project worktree branch prefix"
+                  onClick={() => setWorktreeBranchPrefix(null)}
+                />
+              ) : null
+            }
+            control={
+              <DraftInput
+                className="w-full sm:w-72"
+                value={storedWorktreeBranchPrefix ?? ""}
+                onCommit={(next) => setWorktreeBranchPrefix(sanitizeWorktreeBranchPrefix(next))}
+                placeholder={`Default (${inheritedWorktreeBranchPrefix})`}
+                spellCheck={false}
+                aria-label="Worktree branch prefix"
+              />
             }
           />
         </SettingsSection>

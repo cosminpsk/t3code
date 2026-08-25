@@ -7,6 +7,8 @@ import {
   isTemporaryWorktreeBranch,
   normalizeGitRemoteUrl,
   parseGitHubRepositoryNameWithOwnerFromRemoteUrl,
+  resolveWorktreeBranchPrefix,
+  sanitizeWorktreeBranchPrefix,
   WORKTREE_BRANCH_PREFIX,
 } from "./git.ts";
 
@@ -107,6 +109,72 @@ describe("isTemporaryWorktreeBranch", () => {
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/feature/demo`)).toBe(false);
     expect(isTemporaryWorktreeBranch("main")).toBe(false);
     expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef-extra`)).toBe(false);
+  });
+
+  it("matches placeholders under a custom prefix", () => {
+    expect(isTemporaryWorktreeBranch("feature/deadbeef", "feature")).toBe(true);
+    expect(isTemporaryWorktreeBranch("team/feature/deadbeef", "team/feature")).toBe(true);
+  });
+
+  it("still matches legacy t3code placeholders once a custom prefix is set", () => {
+    expect(isTemporaryWorktreeBranch(`${WORKTREE_BRANCH_PREFIX}/deadbeef`, "feature")).toBe(true);
+  });
+
+  it("does not treat a custom-prefixed placeholder as temporary without the prefix", () => {
+    expect(isTemporaryWorktreeBranch("feature/deadbeef")).toBe(false);
+  });
+});
+
+describe("sanitizeWorktreeBranchPrefix", () => {
+  it("returns null for absent or unusable values", () => {
+    expect(sanitizeWorktreeBranchPrefix(null)).toBe(null);
+    expect(sanitizeWorktreeBranchPrefix(undefined)).toBe(null);
+    expect(sanitizeWorktreeBranchPrefix("   ")).toBe(null);
+    expect(sanitizeWorktreeBranchPrefix("///")).toBe(null);
+    expect(sanitizeWorktreeBranchPrefix("--")).toBe(null);
+  });
+
+  it("normalizes a prefix into a git-safe ref fragment", () => {
+    expect(sanitizeWorktreeBranchPrefix("  Feature  ")).toBe("feature");
+    expect(sanitizeWorktreeBranchPrefix("feature/")).toBe("feature");
+    expect(sanitizeWorktreeBranchPrefix("/team//feature/")).toBe("team/feature");
+    expect(sanitizeWorktreeBranchPrefix("my cool prefix")).toBe("my-cool-prefix");
+    expect(sanitizeWorktreeBranchPrefix("JIRA.tickets")).toBe("jira-tickets");
+  });
+
+  it("caps the prefix length", () => {
+    expect(sanitizeWorktreeBranchPrefix("a".repeat(100))).toBe("a".repeat(64));
+  });
+});
+
+describe("resolveWorktreeBranchPrefix", () => {
+  it("prefers the project override over the environment default", () => {
+    expect(resolveWorktreeBranchPrefix({ projectPrefix: "feature", settingsPrefix: "wip" })).toBe(
+      "feature",
+    );
+  });
+
+  it("falls back to the environment default, then to t3code", () => {
+    expect(resolveWorktreeBranchPrefix({ projectPrefix: null, settingsPrefix: "wip" })).toBe("wip");
+    expect(resolveWorktreeBranchPrefix({ projectPrefix: null, settingsPrefix: null })).toBe(
+      WORKTREE_BRANCH_PREFIX,
+    );
+    expect(resolveWorktreeBranchPrefix({ projectPrefix: "  ", settingsPrefix: "" })).toBe(
+      WORKTREE_BRANCH_PREFIX,
+    );
+  });
+});
+
+describe("buildTemporaryWorktreeBranchName", () => {
+  it("uses the supplied prefix", () => {
+    expect(buildTemporaryWorktreeBranchName(() => "deadbeef", "feature")).toBe("feature/deadbeef");
+  });
+
+  it("sanitizes the supplied prefix and falls back to t3code", () => {
+    expect(buildTemporaryWorktreeBranchName(() => "deadbeef", "Feature/")).toBe("feature/deadbeef");
+    expect(buildTemporaryWorktreeBranchName(() => "deadbeef", "  ")).toBe(
+      `${WORKTREE_BRANCH_PREFIX}/deadbeef`,
+    );
   });
 });
 
