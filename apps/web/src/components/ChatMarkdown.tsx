@@ -1105,31 +1105,17 @@ function normalizeMarkdownLinkHrefKey(href: string): string {
 
 const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
 
-/** Hosts whose favicon request already failed this session — skip straight to the globe. */
-const failedFaviconHosts = new Set<string>();
-
-const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: string }) {
-  const [failedHost, setFailedHost] = useState<string | null>(null);
+/**
+ * Link marker for external markdown links. Deliberately a local glyph: fetching
+ * a real favicon would disclose every host the agent links to a third party.
+ */
+const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon() {
   return (
     <span
       className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
       aria-hidden
     >
-      {failedHost === host || failedFaviconHosts.has(host) ? (
-        <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
-      ) : (
-        <img
-          src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`}
-          alt=""
-          loading="lazy"
-          draggable={false}
-          className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-sm")}
-          onError={() => {
-            failedFaviconHosts.add(host);
-            setFailedHost(host);
-          }}
-        />
-      )}
+      <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
     </span>
   );
 });
@@ -1389,11 +1375,9 @@ function handleMarkdownFragmentClick(event: ReactMouseEvent<HTMLAnchorElement>, 
 }
 
 function MarkdownExternalLinkContent({
-  host,
   plainText,
   children,
 }: {
-  host: string;
   plainText: string | null;
   children: ReactNode;
 }) {
@@ -1402,7 +1386,7 @@ function MarkdownExternalLinkContent({
     return (
       <>
         <span className="whitespace-nowrap">
-          <MarkdownLinkFavicon host={host} />
+          <MarkdownLinkFavicon />
           {plainText.slice(0, leadingLength)}
         </span>
         {breakableExternalLinkText(plainText.slice(leadingLength))}
@@ -1418,7 +1402,7 @@ function MarkdownExternalLinkContent({
     return (
       <>
         <span className="whitespace-nowrap">
-          <MarkdownLinkFavicon host={host} />
+          <MarkdownLinkFavicon />
           {firstChild.slice(0, leadingLength)}
         </span>
         {breakableExternalLinkText(firstChild.slice(leadingLength))}
@@ -1430,7 +1414,7 @@ function MarkdownExternalLinkContent({
   return (
     <>
       <span className="whitespace-nowrap">
-        <MarkdownLinkFavicon host={host} />
+        <MarkdownLinkFavicon />
         {firstChild}
       </span>
       {childNodes.slice(1)}
@@ -2287,8 +2271,8 @@ function ChatMarkdown({
               }}
             >
               {faviconHost && hastHasText(node) ? (
-                <MarkdownExternalLinkContent host={faviconHost} plainText={plainHastText(node)}>
-                  {linkChildren}
+                <MarkdownExternalLinkContent plainText={plainHastText(node)}>
+                  {children}
                 </MarkdownExternalLinkContent>
               ) : (
                 linkChildren

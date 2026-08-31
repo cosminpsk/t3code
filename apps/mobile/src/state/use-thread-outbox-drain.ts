@@ -11,7 +11,7 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type MessageId,
 } from "@t3tools/contracts";
-import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
+import { buildTemporaryWorktreeBranchName, resolveWorktreeBranchPrefix } from "@t3tools/shared/git";
 import * as Cause from "effect/Cause";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -807,7 +807,14 @@ export function useThreadOutboxDrain(): void {
           branch: creation.branch,
           worktreePath: creation.worktreePath,
           startFromOrigin: creation.startFromOrigin ?? false,
-          worktreeBranchName: buildTemporaryWorktreeBranchName(randomHex),
+          worktreeBranchName: buildTemporaryWorktreeBranchName(
+            randomHex,
+            resolveWorktreeBranchPrefix({
+              projectPrefix: findCreationProject(projects, queuedMessage)?.worktreeBranchPrefix,
+              settingsPrefix: serverConfigs.get(queuedMessage.environmentId)?.settings
+                .worktreeBranchPrefix,
+            }),
+          ),
         }),
       });
       const { reportFailure } = makeDeliveryHelpers(queuedMessage);

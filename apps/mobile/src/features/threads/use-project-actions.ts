@@ -9,11 +9,12 @@ import {
   type ProviderInteractionMode,
   type RuntimeMode,
 } from "@t3tools/contracts";
-import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
+import { buildTemporaryWorktreeBranchName, resolveWorktreeBranchPrefix } from "@t3tools/shared/git";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 
 import { threadEnvironment } from "../../state/threads";
+import { useServerConfigs } from "../../state/entities";
 import type { DraftComposerAttachment } from "../../lib/composerImages";
 import { prepareTurnAttachments, validateDraftFileAttachments } from "../../lib/attachmentUpload";
 import { makeTurnCommandMetadata, type TurnCommandMetadata } from "../../lib/commandMetadata";
@@ -28,6 +29,7 @@ import { serverEnvironment } from "../../state/server";
 
 export function useCreateProjectThread() {
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const serverConfigs = useServerConfigs();
 
   return useCallback(
     async (input: {
@@ -126,7 +128,14 @@ export function useCreateProjectThread() {
           branch: input.branch,
           worktreePath: input.worktreePath,
           startFromOrigin: input.startFromOrigin ?? false,
-          worktreeBranchName: buildTemporaryWorktreeBranchName(randomHex),
+          worktreeBranchName: buildTemporaryWorktreeBranchName(
+            randomHex,
+            resolveWorktreeBranchPrefix({
+              projectPrefix: input.project.worktreeBranchPrefix,
+              settingsPrefix: serverConfigs.get(input.project.environmentId)?.settings
+                .worktreeBranchPrefix,
+            }),
+          ),
         }),
       });
       if (AsyncResult.isFailure(result)) {
@@ -148,6 +157,6 @@ export function useCreateProjectThread() {
         scopeThreadRef(input.project.environmentId, threadId),
       );
     },
-    [startTurn],
+    [serverConfigs, startTurn],
   );
 }

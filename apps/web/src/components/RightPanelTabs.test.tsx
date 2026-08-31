@@ -123,7 +123,7 @@ function renderTabs(
 }
 
 describe("RightPanelTabs preview favicon", () => {
-  it("prefers a live capture and never asks Google about a private hostname", () => {
+  it("uses only a live capture and never asks a third-party favicon service", () => {
     const captured = renderTabs(favicon("data:image/png;base64,AAAA", "http://24x.xf.local/"));
     expect(captured).toContain("data:image/png;base64,AAAA");
     expect(captured).not.toContain("s2/favicons");

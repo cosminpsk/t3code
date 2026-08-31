@@ -19,7 +19,7 @@ import * as Option from "effect/Option";
 import type * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
-import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
+import { isTemporaryWorktreeBranch, resolveWorktreeBranchPrefix } from "@t3tools/shared/git";
 
 import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
 import {
@@ -27,6 +27,7 @@ import {
   resolveThreadWorkspaceCwd,
 } from "../../checkpointing/Utils.ts";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { CheckpointReactor, type CheckpointReactorShape } from "../Services/CheckpointReactor.ts";
 import { forkParked } from "../../serverActivation.ts";
@@ -88,6 +89,7 @@ const make = Effect.gen(function* () {
   const receiptBus = yield* RuntimeReceiptBus;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
+  const serverSettingsService = yield* ServerSettingsService;
 
   const appendRevertFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -568,10 +570,9 @@ const make = Effect.gen(function* () {
     readonly cwd: string;
     readonly local: VcsStatusLocalResult;
   }) {
-    // Detached HEAD has no branch to adopt; a temporary placeholder checkout
-    // means the first-turn auto-rename is still in flight — don't race it.
+    // Detached HEAD has no branch to adopt.
     const checkedOutBranch = input.local.refName;
-    if (checkedOutBranch === null || isTemporaryWorktreeBranch(checkedOutBranch)) {
+    if (checkedOutBranch === null) {
       return;
     }
 
@@ -584,8 +585,30 @@ const make = Effect.gen(function* () {
         thread.branch === null ||
         thread.branch === checkedOutBranch ||
         thread.worktreePath === null ||
-        thread.worktreePath !== input.cwd ||
-        isTemporaryWorktreeBranch(thread.branch)
+        thread.worktreePath !== input.cwd
+      ) {
+        return;
+      }
+
+      // A placeholder on either side means the first-turn auto-rename is still
+      // in flight — adopting a name mid-rename either reverts the thread to the
+      // placeholder or races the rename's own update.
+      const project = yield* projectionSnapshotQuery
+        .getProjectShellById(thread.projectId)
+        .pipe(Effect.map(Option.getOrUndefined));
+      // Unreadable settings must not stall drift following; the built-in
+      // prefix still covers every thread that never set an override.
+      const settingsPrefix = yield* serverSettingsService.getSettings.pipe(
+        Effect.map((settings) => settings.worktreeBranchPrefix),
+        Effect.orElseSucceed(() => null),
+      );
+      const branchPrefix = resolveWorktreeBranchPrefix({
+        projectPrefix: project?.worktreeBranchPrefix ?? null,
+        settingsPrefix,
+      });
+      if (
+        isTemporaryWorktreeBranch(checkedOutBranch, branchPrefix) ||
+        isTemporaryWorktreeBranch(thread.branch, branchPrefix)
       ) {
         return;
       }

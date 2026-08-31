@@ -36,6 +36,7 @@ import {
   MIN_TERMINAL_FONT_SIZE,
 } from "@t3tools/contracts/settings";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
+import { sanitizeWorktreeBranchPrefix } from "@t3tools/shared/git";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
@@ -526,6 +527,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin
         ? ["New worktrees start from origin"]
         : []),
+      ...(settings.worktreeBranchPrefix !== DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix
+        ? ["Worktree branch prefix"]
+        : []),
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
@@ -672,6 +676,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       providerHealthRefreshInterval: DEFAULT_UNIFIED_SETTINGS.providerHealthRefreshInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
       newWorktreesStartFromOrigin: DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
+      worktreeBranchPrefix: DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix,
       addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
@@ -2229,7 +2234,8 @@ export function GeneralSettingsPanel() {
           resetAction={
             settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode ||
             settings.newWorktreesStartFromOrigin !==
-              DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin ? (
+              DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin ||
+            settings.worktreeBranchPrefix !== DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix ? (
               <SettingResetButton
                 label="new threads"
                 onClick={() =>
@@ -2237,6 +2243,7 @@ export function GeneralSettingsPanel() {
                     defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
                     newWorktreesStartFromOrigin:
                       DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin,
+                    worktreeBranchPrefix: DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix,
                   })
                 }
               />
@@ -2294,6 +2301,42 @@ export function GeneralSettingsPanel() {
                   updateSettings({ newWorktreesStartFromOrigin: Boolean(checked) })
                 }
                 aria-label="Start new worktrees from origin by default"
+              />
+            }
+          />
+        ) : null}
+
+        {settings.defaultThreadEnvMode === "worktree" ? (
+          <SettingsRow
+            className="bg-muted/20 sm:pl-9"
+            title={searchableSetting("worktree-branch-prefix").title}
+            description="Namespace for branches created with a new worktree, so they read as yours rather than the app's."
+            resetAction={
+              settings.worktreeBranchPrefix !== DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix ? (
+                <SettingResetButton
+                  label="worktree branch prefix"
+                  onClick={() =>
+                    updateSettings({
+                      worktreeBranchPrefix: DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix,
+                    })
+                  }
+                />
+              ) : null
+            }
+            control={
+              <DraftInput
+                className="w-full sm:w-72"
+                value={settings.worktreeBranchPrefix}
+                onCommit={(next) =>
+                  updateSettings({
+                    worktreeBranchPrefix:
+                      sanitizeWorktreeBranchPrefix(next) ??
+                      DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix,
+                  })
+                }
+                placeholder={DEFAULT_UNIFIED_SETTINGS.worktreeBranchPrefix}
+                spellCheck={false}
+                aria-label="Worktree branch prefix"
               />
             }
           />

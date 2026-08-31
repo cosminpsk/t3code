@@ -12,7 +12,7 @@ import {
   type RuntimeMode,
   type TurnId,
 } from "@t3tools/contracts";
-import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
+import { isTemporaryWorktreeBranch, resolveWorktreeBranchPrefix } from "@t3tools/shared/git";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
@@ -279,15 +279,15 @@ function stalePendingRequestDetail(
   return `Stale pending ${requestKind} request: ${requestId}. Provider callback state does not survive app restarts or recovered sessions. Restart the turn to continue.`;
 }
 
-function buildGeneratedWorktreeBranchName(raw: string): string {
+function buildGeneratedWorktreeBranchName(raw: string, prefix: string): string {
   const normalized = raw
     .trim()
     .toLowerCase()
     .replace(/^refs\/heads\//, "")
     .replace(/['"`]/g, "");
 
-  const withoutPrefix = normalized.startsWith(`${WORKTREE_BRANCH_PREFIX}/`)
-    ? normalized.slice(`${WORKTREE_BRANCH_PREFIX}/`.length)
+  const withoutPrefix = normalized.startsWith(`${prefix}/`)
+    ? normalized.slice(`${prefix}/`.length)
     : normalized;
 
   const branchFragment = withoutPrefix
@@ -299,7 +299,7 @@ function buildGeneratedWorktreeBranchName(raw: string): string {
     .replace(/[./_-]+$/g, "");
 
   const safeFragment = branchFragment.length > 0 ? branchFragment : "update";
-  return `${WORKTREE_BRANCH_PREFIX}/${safeFragment}`;
+  return `${prefix}/${safeFragment}`;
 }
 
 const make = Effect.gen(function* () {
@@ -838,13 +838,11 @@ const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly branch: string | null;
     readonly worktreePath: string | null;
+    readonly projectWorktreeBranchPrefix: string | null;
     readonly messageText: string;
     readonly attachments?: ReadonlyArray<ChatAttachment>;
   }) {
     if (!input.branch || !input.worktreePath) {
-      return;
-    }
-    if (!isTemporaryWorktreeBranch(input.branch)) {
       return;
     }
 
@@ -853,6 +851,16 @@ const make = Effect.gen(function* () {
     const attachments = input.attachments ?? [];
     yield* Effect.gen(function* () {
       const settings = yield* serverSettingsService.getSettings;
+      // Resolving the prefix needs settings, so the placeholder check waits
+      // until here: only the branch created alongside the worktree is
+      // replaced, never one the user picked or a rename already landed.
+      const branchPrefix = resolveWorktreeBranchPrefix({
+        projectPrefix: input.projectWorktreeBranchPrefix,
+        settingsPrefix: settings.worktreeBranchPrefix,
+      });
+      if (!isTemporaryWorktreeBranch(oldBranch, branchPrefix)) {
+        return;
+      }
       const modelSelection =
         settings.sourceControlWriterModelSelection === null
           ? settings.textGenerationModelSelection
@@ -869,7 +877,7 @@ const make = Effect.gen(function* () {
       });
       if (!generated) return;
 
-      const targetBranch = buildGeneratedWorktreeBranchName(generated.branch);
+      const targetBranch = buildGeneratedWorktreeBranchName(generated.branch, branchPrefix);
       if (targetBranch === oldBranch) return;
 
       const renamed = yield* gitWorkflow.renameBranch({ cwd, oldBranch, newBranch: targetBranch });
@@ -1162,6 +1170,7 @@ const make = Effect.gen(function* () {
         threadId: event.payload.threadId,
         branch: thread.branch,
         worktreePath: thread.worktreePath,
+        projectWorktreeBranchPrefix: project?.worktreeBranchPrefix ?? null,
         ...generationInput,
       }).pipe(Effect.forkScoped);
 

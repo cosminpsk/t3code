@@ -425,6 +425,9 @@ export function resolveLiveThreadBranchUpdate(input: {
     return null;
   }
 
+  // Draft threads have no worktree of their own yet, so the only placeholder
+  // that can show up here is one left over in the checkout. Matching the
+  // built-in prefix is enough; a configured prefix is not in scope on this path.
   if (
     input.threadBranch !== null &&
     input.gitStatus.refName !== null &&
